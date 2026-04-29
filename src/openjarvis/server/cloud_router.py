@@ -27,6 +27,20 @@ _OPENAI_PREFIXES = ("gpt-", "o1-", "o3-", "o4-", "chatgpt-")
 _ANTHROPIC_PREFIXES = ("claude-",)
 _GOOGLE_PREFIXES = ("gemini-",)
 _MINIMAX_PREFIXES = ("MiniMax-",)
+_DEEPSEEK_PREFIXES = ("deepseek-",)
+_MISTRAL_PREFIXES = ("mistral-", "codestral-", "pixtral-", "ministral-")
+_XAI_PREFIXES = ("grok-",)
+_GROQ_MODELS = (
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "qwen/qwen3-32b",
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "groq/compound",
+    "groq/compound-mini",
+)
+_COHERE_PREFIXES = ("command-",)
 
 # HuggingFace orgs that host local-only quantised models — never route to cloud.
 _LOCAL_HF_ORGS = (
@@ -55,6 +69,12 @@ def _load_keys() -> dict[str, str]:
         "GOOGLE_API_KEY",
         "OPENROUTER_API_KEY",
         "MINIMAX_API_KEY",
+        "GROQ_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "MISTRAL_API_KEY",
+        "XAI_API_KEY",
+        "COHERE_API_KEY",
+        "CO_API_KEY",
     ):
         val = os.environ.get(name)
         if val:
@@ -72,9 +92,22 @@ def get_provider(model: str) -> str | None:
         return "google"
     if any(model.startswith(p) for p in _MINIMAX_PREFIXES):
         return "minimax"
+    if any(model.startswith(p) for p in _DEEPSEEK_PREFIXES):
+        return "deepseek"
+    if any(model.startswith(p) for p in _MISTRAL_PREFIXES):
+        return "mistral"
+    if any(model.startswith(p) for p in _XAI_PREFIXES):
+        return "xai"
+    if model in _GROQ_MODELS or model.startswith("groq/"):
+        return "groq"
+    if any(model.startswith(p) for p in _COHERE_PREFIXES):
+        return "cohere"
     if any(model.startswith(org) for org in _LOCAL_HF_ORGS):
         return None  # local model, never route to cloud
     if "/" in model:  # openrouter format: "meta-llama/llama-3-8b"
+        # Check if it's a Groq model with org prefix
+        if model in _GROQ_MODELS:
+            return "groq"
         return "openrouter"
     return None
 
@@ -392,6 +425,81 @@ async def stream_cloud(
             max_tokens,
             base_url="https://api.minimax.io/v1",
             api_key_name="MINIMAX_API_KEY",
+        ):
+            yield token
+
+    elif provider == "groq":
+        keys = _load_keys()
+        api_key = keys.get("GROQ_API_KEY", "")
+        if not api_key:
+            raise ValueError("GROQ_API_KEY not set — add it in the Cloud Models tab")
+        async for token in _stream_openai(
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            base_url="https://api.groq.com/openai/v1",
+            api_key_name="GROQ_API_KEY",
+        ):
+            yield token
+
+    elif provider == "deepseek":
+        keys = _load_keys()
+        api_key = keys.get("DEEPSEEK_API_KEY", "")
+        if not api_key:
+            raise ValueError("DEEPSEEK_API_KEY not set — add it in the Cloud Models tab")
+        async for token in _stream_openai(
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            base_url="https://api.deepseek.com",
+            api_key_name="DEEPSEEK_API_KEY",
+        ):
+            yield token
+
+    elif provider == "mistral":
+        keys = _load_keys()
+        api_key = keys.get("MISTRAL_API_KEY", "")
+        if not api_key:
+            raise ValueError("MISTRAL_API_KEY not set — add it in the Cloud Models tab")
+        async for token in _stream_openai(
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            base_url="https://api.mistral.ai/v1",
+            api_key_name="MISTRAL_API_KEY",
+        ):
+            yield token
+
+    elif provider == "xai":
+        keys = _load_keys()
+        api_key = keys.get("XAI_API_KEY", "")
+        if not api_key:
+            raise ValueError("XAI_API_KEY not set — add it in the Cloud Models tab")
+        async for token in _stream_openai(
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            base_url="https://api.x.ai/v1",
+            api_key_name="XAI_API_KEY",
+        ):
+            yield token
+
+    elif provider == "cohere":
+        keys = _load_keys()
+        api_key = keys.get("COHERE_API_KEY") or keys.get("CO_API_KEY", "")
+        if not api_key:
+            raise ValueError("COHERE_API_KEY not set — add it in the Cloud Models tab")
+        async for token in _stream_openai(
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            base_url="https://api.cohere.com/v2",
+            api_key_name="COHERE_API_KEY",
         ):
             yield token
 

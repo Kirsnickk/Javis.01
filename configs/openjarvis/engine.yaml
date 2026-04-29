@@ -1,7 +1,12 @@
 engine:
   primary: ollama
-  fallback: anthropic
+  fallback: cloud
 
 ollama:
-  model: qwen3:8b
+  model: qwen3.5:9b
   base_url: http://localhost:11434
+
+cloud:
+  # Groq — ultra-fast cloud inference via LPU
+  default_model: llama-3.3-70b-versatile
+  fallback_model: qwen/qwen3-32b

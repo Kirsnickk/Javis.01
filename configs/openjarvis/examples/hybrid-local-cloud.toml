@@ -1,0 +1,43 @@
+# Hybrid Local+Cloud — Best of both worlds
+# Copy to ~/.openjarvis/config.toml
+#
+# Uses local Ollama for simple/fast queries, falls back to Groq cloud
+# for complex tasks that need larger models. Smart routing picks the
+# best engine automatically.
+#
+# Prerequisites:
+#   - Ollama running with a local model (e.g. qwen3.5:4b)
+#   - export GROQ_API_KEY="gsk_..."
+#
+# Usage:
+#   jarvis init --preset hybrid-local-cloud
+#   jarvis ask "What time is it?"              # → uses local model (fast)
+#   jarvis ask "Write a full REST API in Python" # → routes to Groq cloud
+#   jarvis serve                                # start API server
+
+[engine]
+default = "ollama"
+
+[engine.ollama]
+host = "http://localhost:11434"
+
+[intelligence]
+default_model = "qwen3.5:4b"                   # Local model for quick tasks
+fallback_model = "llama-3.3-70b-versatile"      # Groq cloud for complex tasks
+preferred_engine = "ollama"                     # Try local first
+provider = "local"
+temperature = 0.7
+max_tokens = 4096
+
+[agent]
+default_agent = "orchestrator"
+max_turns = 10
+tools = "code_interpreter,web_search,file_read,file_write,shell_exec,calculator,think"
+objective = "Help the user efficiently, using local models when possible"
+
+[learning.routing]
+policy = "heuristic"                           # Auto-route based on task complexity
+
+[server]
+host = "0.0.0.0"
+port = 8000

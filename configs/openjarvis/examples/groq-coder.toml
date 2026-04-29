@@ -1,0 +1,34 @@
+# Groq Coder — High-speed code assistant powered by Groq LPU
+# Copy to ~/.openjarvis/config.toml
+#
+# Optimized for coding tasks with Qwen 3 32B (top open-source coder).
+# Falls back to GPT OSS 120B for complex architectural reasoning.
+#
+# Prerequisites:
+#   export GROQ_API_KEY="gsk_..."
+#
+# Usage:
+#   jarvis init --preset groq-coder
+#   jarvis ask "Write a FastAPI server with JWT authentication"
+#   jarvis ask "Read main.py and refactor the database layer"
+#   jarvis ask --agent orchestrator "Find and fix the bug in utils.py"
+
+[engine]
+default = "cloud"
+
+[intelligence]
+default_model = "qwen/qwen3-32b"              # Best open-source coder
+fallback_model = "openai/gpt-oss-120b"        # Fallback for complex reasoning
+temperature = 0.3                              # Lower temp for precise code
+max_tokens = 8192                              # Longer output for code blocks
+top_p = 0.95
+
+[agent]
+default_agent = "orchestrator"
+max_turns = 12
+tools = "code_interpreter,file_read,file_write,shell_exec,web_search,think,calculator"
+objective = "Write clean, well-documented, production-ready code"
+
+[server]
+host = "0.0.0.0"
+port = 8000

@@ -1,0 +1,38 @@
+# Groq Research — Deep research agent with Groq speed
+# Copy to ~/.openjarvis/config.toml
+#
+# Combines GPT OSS 120B's deep reasoning with Groq's speed.
+# Uses Compound AI for agentic web research workflows.
+#
+# Prerequisites:
+#   export GROQ_API_KEY="gsk_..."
+#
+# Usage:
+#   jarvis init --preset groq-research
+#   jarvis ask "Research the latest advances in quantum computing"
+#   jarvis memory index ./docs/
+#   jarvis ask "Summarize all papers about transformer architectures"
+
+[engine]
+default = "cloud"
+
+[intelligence]
+default_model = "openai/gpt-oss-120b"         # Strongest reasoning model
+fallback_model = "llama-3.3-70b-versatile"     # Fast fallback
+temperature = 0.4                              # Balanced creativity/accuracy
+max_tokens = 8192
+
+[agent]
+default_agent = "deep_research"
+max_turns = 15
+tools = "web_search,file_read,knowledge_search,calculator,think,code_interpreter"
+objective = "Conduct thorough multi-hop research with citations and evidence"
+context_from_memory = true
+
+[tools.storage]
+default_backend = "sqlite"
+db_path = "~/.openjarvis/memory.db"
+
+[server]
+host = "0.0.0.0"
+port = 8000
