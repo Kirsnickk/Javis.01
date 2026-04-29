@@ -1,0 +1,2 @@
+persistent: true
+user_profile: ~/.jarvis/profile.json

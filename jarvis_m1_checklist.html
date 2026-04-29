@@ -1,0 +1,263 @@
+<style>
+*{box-sizing:border-box}
+body{margin:0;padding:0}
+.wrap{padding:16px 0;font-size:14px;color:var(--color-text-primary)}
+.phase{margin-bottom:8px;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden}
+.phase-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;user-select:none;background:var(--color-background-secondary)}
+.phase-header:hover{background:var(--color-background-tertiary)}
+.phase-title{display:flex;align-items:center;gap:10px;font-weight:500;font-size:14px}
+.badge{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:11px;font-size:11px;font-weight:500}
+.badge.teal{background:#E1F5EE;color:#085041}
+.badge.purple{background:#EEEDFE;color:#3C3489}
+.badge.amber{background:#FAEEDA;color:#633806}
+.badge.coral{background:#FAECE7;color:#712B13}
+.badge.blue{background:#E6F1FB;color:#0C447C}
+.badge.green{background:#EAF3DE;color:#27500A}
+.badge.gray{background:#F1EFE8;color:#444441}
+.progress-pill{font-size:11px;color:var(--color-text-secondary)}
+.chevron{transition:transform .2s;font-size:12px;color:var(--color-text-tertiary)}
+.chevron.open{transform:rotate(180deg)}
+.steps{display:none;padding:8px 14px 12px}
+.steps.open{display:block}
+.step{display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-bottom:0.5px solid var(--color-border-tertiary)}
+.step:last-child{border-bottom:none}
+.step label{display:flex;align-items:flex-start;gap:10px;cursor:pointer;flex:1}
+.step input[type=checkbox]{margin-top:2px;width:15px;height:15px;flex-shrink:0;accent-color:#1D9E75;cursor:pointer}
+.step-body{flex:1}
+.step-title{font-weight:500;font-size:13px;line-height:1.4}
+.step-title.done{text-decoration:line-through;color:var(--color-text-tertiary)}
+.step-cmd{margin-top:4px;font-family:var(--font-mono);font-size:11px;background:var(--color-background-tertiary);border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:5px 8px;color:var(--color-text-secondary);white-space:pre-wrap;word-break:break-all;line-height:1.5}
+.step-note{margin-top:3px;font-size:11px;color:var(--color-text-secondary);line-height:1.4}
+.note-warn{color:#854F0B}
+.note-good{color:#0F6E56}
+.top-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.top-title{font-size:16px;font-weight:500}
+.top-sub{font-size:12px;color:var(--color-text-secondary);margin-top:2px}
+.total-bar{height:6px;background:var(--color-border-tertiary);border-radius:3px;overflow:hidden;margin-bottom:14px}
+.total-fill{height:100%;background:#1D9E75;border-radius:3px;transition:width .3s}
+.copy-btn{font-size:11px;padding:2px 7px;border-radius:5px;border:0.5px solid var(--color-border-secondary);background:var(--color-background-primary);color:var(--color-text-secondary);cursor:pointer}
+.copy-btn:hover{background:var(--color-background-secondary)}
+</style>
+<div class="wrap">
+  <div class="top-bar">
+    <div>
+      <div class="top-title">Jarvis trên MacBook Air M1</div>
+      <div class="top-sub">Tick từng bước khi hoàn thành</div>
+    </div>
+    <div id="total-label" style="font-size:12px;color:var(--color-text-secondary)">0 / 0 bước</div>
+  </div>
+  <div class="total-bar"><div class="total-fill" id="total-fill" style="width:0%"></div></div>
+  <div id="phases"></div>
+</div>
+
+<script>
+const PHASES = [
+  {
+    id:'p1', label:'Giai đoạn 1', title:'Cài nền tảng (Homebrew + Tools)', color:'teal',
+    steps:[
+      {id:'s1', title:'Cài Homebrew (package manager cho macOS)',
+       cmd:'/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"\necho \'eval "$(/opt/homebrew/bin/brew shellenv)"\' >> ~/.zprofile\neval "$(/opt/homebrew/bin/brew shellenv)"',
+       note:'M1 dùng /opt/homebrew thay vì /usr/local — khác Intel Mac'},
+      {id:'s2', title:'Cài Python 3.12, Git, Node.js',
+       cmd:'brew install python@3.12 git node\npython3 --version  # Phải thấy 3.12.x',
+       note:''},
+      {id:'s3', title:'Cài uv (Python package manager)',
+       cmd:'curl -LsSf https://astral.sh/uv/install.sh | sh\nsource ~/.zshrc\nuv --version',
+       note:''},
+      {id:'s4', title:'Cài Rust (cần để build extension)',
+       cmd:'curl --proto \'=https\' --tlsv1.2 -sSf https://sh.rustup.rs | sh\nsource ~/.cargo/env\nrustc --version  # Phải thấy rustc 1.x.x (aarch64)',
+       note:'Quan trọng: phải thấy "aarch64-apple-darwin" — đúng kiến trúc M1'},
+      {id:'s5', title:'Clone OpenJarvis + build',
+       cmd:'git clone https://github.com/open-jarvis/OpenJarvis.git\ncd OpenJarvis\nuv sync\nuv sync --extra server\nuv run maturin develop -m rust/crates/openjarvis-python/Cargo.toml',
+       note:'Build Rust extension lần đầu mất ~2-3 phút'},
+    ]
+  },
+  {
+    id:'p2', label:'Giai đoạn 2', title:'Cài Ollama — chạy AI local trên M1', color:'purple',
+    steps:[
+      {id:'s6', title:'Cài Ollama (tối ưu cho Apple Silicon)',
+       cmd:'brew install ollama',
+       note:'Phiên bản Homebrew tự nhận M1/M2/M3 và dùng Metal GPU — nhanh hơn 3-5x so với CPU'},
+      {id:'s7', title:'Khởi động Ollama service',
+       cmd:'brew services start ollama\n# Hoặc chạy manual:\nollama serve &',
+       note:''},
+      {id:'s8', title:'Pull model tối ưu cho 8GB RAM (chọn 1)',
+       cmd:'ollama pull qwen3:8b        # Khuyến nghị: nhanh, tiếng Việt tốt\n# ollama pull llama3.2:3b    # Nhẹ hơn, nếu RAM thấp\n# ollama pull mistral:7b     # Tốt cho code\nollama list  # Kiểm tra',
+       note:'⚠️ M1 Air 8GB: dùng model ≤8B. M1 Air 16GB: có thể dùng đến 13B'},
+      {id:'s9', title:'Pull embedding model cho RAG',
+       cmd:'ollama pull nomic-embed-text  # Nhẹ 274MB, dùng cho tìm kiếm tài liệu',
+       note:''},
+      {id:'s10', title:'Khởi tạo Jarvis + kiểm tra',
+       cmd:'cd OpenJarvis\nuv run jarvis init\nuv run jarvis doctor\nuv run jarvis ask "xin chào"',
+       note:''},
+    ]
+  },
+  {
+    id:'p3', label:'Giai đoạn 3', title:'Cấu hình Cloud Fallback (Claude API)', color:'blue',
+    steps:[
+      {id:'s11', title:'Tạo file .env với API keys',
+       cmd:'cd OpenJarvis\ncat > .env << \'EOF\'\nANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxx\nEOF\necho \'.env\' >> .gitignore  # Không commit key lên git',
+       note:'Lấy key tại console.anthropic.com — free tier đủ dùng cho fallback'},
+      {id:'s12', title:'Load biến môi trường tự động',
+       cmd:'echo \'source ~/OpenJarvis/.env\' >> ~/.zshrc\nsource ~/.zshrc',
+       note:''},
+      {id:'s13', title:'Cấu hình routing local → cloud',
+       cmd:'# Tạo file configs/openjarvis/engine.yaml:\n# engine:\n#   primary: ollama\n#   fallback: anthropic\n# ollama:\n#   model: qwen3:8b\n#   base_url: http://localhost:11434',
+       note:'✓ Local xử lý ~90% queries, cloud chỉ dùng khi cần thiết'},
+      {id:'s14', title:'Cấu hình nhân cách Jarvis tiếng Việt',
+       cmd:'# configs/openjarvis/persona.yaml\n# persona:\n#   name: Jarvis\n#   language: vi\n#   system_prompt: "Trả lời bằng tiếng Việt, ngắn gọn, chính xác"',
+       note:''},
+    ]
+  },
+  {
+    id:'p4', label:'Giai đoạn 4', title:'Tính năng Trợ lý hỏi đáp', color:'teal',
+    steps:[
+      {id:'s15', title:'Khởi động preset chat',
+       cmd:'uv run jarvis init --preset chat-simple\nuv run jarvis ask "Tóm tắt lịch sử Việt Nam trong 3 câu"',
+       note:''},
+      {id:'s16', title:'Chế độ hội thoại nhiều lượt',
+       cmd:'uv run jarvis chat\n# Gõ "exit" để thoát',
+       note:''},
+      {id:'s17', title:'Thêm alias tiện lợi vào .zshrc',
+       cmd:'echo \'alias j="cd ~/OpenJarvis && uv run jarvis ask"\' >> ~/.zshrc\necho \'alias jchat="cd ~/OpenJarvis && uv run jarvis chat"\' >> ~/.zshrc\nsource ~/.zshrc\n# Dùng nhanh:\nj "giải thích Docker là gì?"',
+       note:''},
+    ]
+  },
+  {
+    id:'p5', label:'Giai đoạn 5', title:'Automation — Email + Lịch', color:'amber',
+    steps:[
+      {id:'s18', title:'Cài preset morning digest',
+       cmd:'uv run jarvis init --preset morning-digest-minimal',
+       note:''},
+      {id:'s19', title:'Kết nối Google (Gmail + Calendar)',
+       cmd:'uv run jarvis connect gdrive\n# Trình duyệt tự mở → đăng nhập Google → cấp quyền\n# Token lưu tại ~/.jarvis/credentials/google.json',
+       note:'Một lần OAuth duy nhất, sau đó tự động'},
+      {id:'s20', title:'Chạy briefing buổi sáng đầu tiên',
+       cmd:'uv run jarvis digest --fresh',
+       note:'Bao gồm: email quan trọng, lịch họp, tasks pending'},
+      {id:'s21', title:'Lên lịch tự động mỗi sáng (crontab)',
+       cmd:'crontab -e\n# Thêm dòng sau (chạy 7:00 sáng):\n# 0 7 * * * cd ~/OpenJarvis && uv run jarvis digest --fresh >> ~/.jarvis/logs/digest.log 2>&1',
+       note:''},
+    ]
+  },
+  {
+    id:'p6', label:'Giai đoạn 6', title:'Nghiên cứu & RAG (tìm kiếm tài liệu)', color:'green',
+    steps:[
+      {id:'s22', title:'Cài preset deep research',
+       cmd:'uv run jarvis init --preset deep-research',
+       note:''},
+      {id:'s23', title:'Index tài liệu cá nhân',
+       cmd:'uv run jarvis memory index ~/Documents/\nuv run jarvis memory index ~/Desktop/\nuv run jarvis memory status  # Kiểm tra số tài liệu',
+       note:'Hỗ trợ: PDF, DOCX, TXT, MD, HTML'},
+      {id:'s24', title:'Test tìm kiếm tài liệu',
+       cmd:'uv run jarvis ask "Tóm tắt các tài liệu về machine learning của tôi"\nuv run jarvis ask --research "So sánh React và Vue theo tài liệu tôi đã lưu"',
+       note:''},
+      {id:'s25', title:'Cài skill nghiên cứu từ Hermes',
+       cmd:'uv run jarvis skill install hermes:arxiv\nuv run jarvis skill install hermes:summarizer\nuv run jarvis skill sync hermes --category research',
+       note:''},
+    ]
+  },
+  {
+    id:'p7', label:'Giai đoạn 7', title:'Code Assistant', color:'coral',
+    steps:[
+      {id:'s26', title:'Cài model chuyên code',
+       cmd:'ollama pull qwen2.5-coder:7b  # Tốt nhất cho M1 8GB\nuv run jarvis init --preset code-assistant',
+       note:''},
+      {id:'s27', title:'Test viết và chạy code tự động',
+       cmd:'uv run jarvis run --agent native_openhands \\\n  "Viết script Python tính Fibonacci và test nó"',
+       note:'Agent tự viết code, chạy, sửa lỗi nếu có'},
+      {id:'s28', title:'Thêm alias cho code workflow',
+       cmd:'echo \'alias jcode="cd ~/OpenJarvis && uv run jarvis run --agent native_openhands"\' >> ~/.zshrc\nsource ~/.zshrc\n# Dùng nhanh:\njcode "Tạo REST API đơn giản bằng FastAPI"',
+       note:''},
+    ]
+  },
+  {
+    id:'p8', label:'Giai đoạn 8', title:'Memory + Skills nâng cao', color:'purple',
+    steps:[
+      {id:'s29', title:'Bật persistent memory',
+       cmd:'# Trong configs/openjarvis/memory.yaml:\n# persistent: true\nuv run jarvis ask "Tên tôi là [tên bạn], tôi là developer"\n# Lần sau Jarvis sẽ nhớ',
+       note:''},
+      {id:'s30', title:'Sync toàn bộ skills',
+       cmd:'uv run jarvis skill sync hermes --category research\nuv run jarvis skill sync hermes --category productivity\nuv run jarvis skill sync hermes --category coding\nuv run jarvis skill list  # Xem danh sách',
+       note:'~150 skills chất lượng cao từ Hermes'},
+      {id:'s31', title:'Optimize skills từ lịch sử',
+       cmd:'uv run jarvis optimize skills --policy dspy\nuv run jarvis bench skills --max-samples 10',
+       note:''},
+    ]
+  },
+  {
+    id:'p9', label:'Giai đoạn 9', title:'Giao diện Web (Frontend)', color:'gray',
+    steps:[
+      {id:'s32', title:'Khởi động web server',
+       cmd:'uv run jarvis server --port 8000\n# Mở trình duyệt: http://localhost:8000',
+       note:''},
+      {id:'s33', title:'Build frontend TypeScript',
+       cmd:'cd frontend\nnpm install\nnpm run dev   # Development\nnpm run build # Production',
+       note:''},
+      {id:'s34', title:'Cài Desktop App (Electron)',
+       cmd:'# Download bản release sẵn:\n# https://github.com/open-jarvis/OpenJarvis/releases\n# Tìm file: desktop-v0.0.1-rc1-mac-arm64.dmg',
+       note:'✓ Bản arm64 tối ưu cho M1/M2/M3'},
+    ]
+  },
+];
+
+function render() {
+  const ph = document.getElementById('phases');
+  ph.innerHTML = '';
+  let total = 0, done = 0;
+  PHASES.forEach(p => {
+    const pDone = p.steps.filter(s => localStorage_get(s.id)).length;
+    total += p.steps.length; done += pDone;
+    const pct = Math.round(pDone/p.steps.length*100);
+    const div = document.createElement('div');
+    div.className = 'phase';
+    const open = sessionStorage.getItem('open_'+p.id) === '1';
+    div.innerHTML = `
+      <div class="phase-header" onclick="toggle('${p.id}')">
+        <div class="phase-title">
+          <span class="badge ${p.color}">${p.label}</span>
+          <span>${p.title}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="progress-pill">${pDone}/${p.steps.length}</span>
+          ${pct===100?'<span style="color:#1D9E75;font-size:12px">✓</span>':''}
+          <span class="chevron ${open?'open':''}">▼</span>
+        </div>
+      </div>
+      <div class="steps ${open?'open':''}" id="steps_${p.id}">
+        ${p.steps.map(s=>{
+          const checked = localStorage_get(s.id);
+          return `<div class="step">
+            <label>
+              <input type="checkbox" ${checked?'checked':''} onchange="toggle_step('${s.id}', this.checked)">
+              <div class="step-body">
+                <div class="step-title ${checked?'done':''}">${s.title}</div>
+                ${s.cmd?`<div class="step-cmd">${escHtml(s.cmd)}</div>`:''}
+                ${s.note?`<div class="step-note">${s.note}</div>`:''}
+              </div>
+            </label>
+          </div>`;
+        }).join('')}
+      </div>`;
+    ph.appendChild(div);
+  });
+  document.getElementById('total-label').textContent = `${done} / ${total} bước`;
+  document.getElementById('total-fill').style.width = (done/total*100)+'%';
+}
+
+function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function localStorage_get(k){try{return localStorage.getItem('j_'+k)==='1'}catch{return false}}
+function localStorage_set(k,v){try{localStorage.setItem('j_'+k,v?'1':'0')}catch{}}
+
+window.toggle = function(id){
+  const cur = sessionStorage.getItem('open_'+id)==='1';
+  sessionStorage.setItem('open_'+id, cur?'0':'1');
+  render();
+}
+window.toggle_step = function(id, checked){
+  localStorage_set(id, checked);
+  render();
+}
+
+render();
+</script>
