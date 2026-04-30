@@ -42,7 +42,10 @@ class OllamaEngine(InferenceEngine):
             env_host = os.environ.get("OLLAMA_HOST")
             host = env_host or self._DEFAULT_HOST
         self._host = host.rstrip("/")
+        self._timeout = timeout
         self._client = httpx.Client(base_url=self._host, timeout=timeout)
+        # Async client for stream() — avoids blocking the event loop.
+        self._async_client: httpx.AsyncClient | None = None
         # Last stream usage — captured from Ollama's final chunk
         self._last_stream_usage: Dict[str, int] = {}
 
@@ -173,6 +176,14 @@ class OllamaEngine(InferenceEngine):
             result["tool_calls"] = tool_calls
         return result
 
+    def _get_async_client(self) -> httpx.AsyncClient:
+        """Lazily create the async client (must be done inside an event loop)."""
+        if self._async_client is None or self._async_client.is_closed:
+            self._async_client = httpx.AsyncClient(
+                base_url=self._host, timeout=self._timeout
+            )
+        return self._async_client
+
     async def stream(
         self,
         messages: Sequence[Message],
@@ -192,10 +203,19 @@ class OllamaEngine(InferenceEngine):
                 "num_ctx": kwargs.get("num_ctx", 8192),
             },
         }
+        # Disable extended thinking by default (Qwen3.5 etc.).
+        # When enabled, thinking tokens consume the entire budget and
+        # the visible content comes back empty.
+        if "think" not in kwargs:
+            payload["think"] = False
+        elif kwargs["think"] is not None:
+            payload["think"] = kwargs["think"]
+
+        client = self._get_async_client()
         try:
-            with self._client.stream("POST", "/api/chat", json=payload) as resp:
+            async with client.stream("POST", "/api/chat", json=payload) as resp:
                 resp.raise_for_status()
-                for line in resp.iter_lines():
+                async for line in resp.aiter_lines():
                     if not line.strip():
                         continue
                     try:
@@ -395,6 +415,18 @@ class OllamaEngine(InferenceEngine):
 
     def close(self) -> None:
         self._client.close()
+        if self._async_client is not None and not self._async_client.is_closed:
+            # Best-effort close; in an async context use aclose() instead.
+            try:
+                import asyncio
+
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(self._async_client.aclose())
+                else:
+                    loop.run_until_complete(self._async_client.aclose())
+            except Exception:
+                pass
 
 
 __all__ = ["OllamaEngine"]

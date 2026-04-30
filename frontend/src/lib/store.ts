@@ -211,6 +211,17 @@ interface AppState {
   // Model loading
   modelLoading: boolean;
   setModelLoading: (loading: boolean) => void;
+
+  // Ensemble mode
+  ensembleMode: boolean;
+  ensembleModels: string[];
+  ensembleSynthesizer: string;
+  ensembleResponses: Array<{ model: string; response: string }>;
+  setEnsembleMode: (enabled: boolean) => void;
+  setEnsembleModels: (models: string[]) => void;
+  setEnsembleSynthesizer: (model: string) => void;
+  setEnsembleResponses: (responses: Array<{ model: string; response: string }>) => void;
+  toggleEnsembleModel: (model: string) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => {
@@ -459,6 +470,24 @@ export const useAppStore = create<AppState>((set, get) => {
     // ── Model loading ───────────────────────────────────────────────
     modelLoading: false,
     setModelLoading: (loading) => set({ modelLoading: loading }),
+
+    // ── Ensemble mode ────────────────────────────────────────────────
+    ensembleMode: false,
+    ensembleModels: [],
+    ensembleSynthesizer: '',
+    ensembleResponses: [],
+    setEnsembleMode: (enabled) => set({ ensembleMode: enabled }),
+    setEnsembleModels: (models) => set({ ensembleModels: models }),
+    setEnsembleSynthesizer: (model) => set({ ensembleSynthesizer: model }),
+    setEnsembleResponses: (responses) => set({ ensembleResponses: responses }),
+    toggleEnsembleModel: (model) => set((s) => {
+      const exists = s.ensembleModels.includes(model);
+      return {
+        ensembleModels: exists
+          ? s.ensembleModels.filter((m) => m !== model)
+          : [...s.ensembleModels, model],
+      };
+    }),
 
     // ── Opt-in sharing ──────────────────────────────────────────────
 

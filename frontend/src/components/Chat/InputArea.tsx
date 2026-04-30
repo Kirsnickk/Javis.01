@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Send, Square, Paperclip } from 'lucide-react';
+import { Send, Square, Paperclip, Users } from 'lucide-react';
 import { useAppStore, generateId } from '../../lib/store';
-import { streamChat } from '../../lib/sse';
+import { streamChat, streamEnsembleChat } from '../../lib/sse';
 import { fetchSavings, getBase } from '../../lib/api';
 import { MicButton } from './MicButton';
 import { useSpeech } from '../../hooks/useSpeech';
@@ -26,6 +26,15 @@ export function InputArea() {
   const setStreamState = useAppStore((s) => s.setStreamState);
   const resetStream = useAppStore((s) => s.resetStream);
   const modelLoading = useAppStore((s) => s.modelLoading);
+  const modelsList = useAppStore((s) => s.models);
+
+  // Ensemble state
+  const ensembleMode = useAppStore((s) => s.ensembleMode);
+  const ensembleModels = useAppStore((s) => s.ensembleModels);
+  const ensembleSynthesizer = useAppStore((s) => s.ensembleSynthesizer);
+  const setEnsembleMode = useAppStore((s) => s.setEnsembleMode);
+  const toggleEnsembleModel = useAppStore((s) => s.toggleEnsembleModel);
+  const setEnsembleSynthesizer = useAppStore((s) => s.setEnsembleSynthesizer);
 
   const { state: speechState, available: speechAvailable, startRecording, stopRecording } = useSpeech();
 
@@ -149,10 +158,17 @@ export function InputArea() {
     });
 
     try {
-      for await (const sseEvent of streamChat(
-        { model: selectedModel, messages: apiMessages, stream: true, temperature, max_tokens: maxTokens },
-        controller.signal,
-      )) {
+      const streamGenerator = ensembleMode && ensembleModels.length > 0
+        ? streamEnsembleChat(
+            { models: ensembleModels, synthesizer: ensembleSynthesizer || selectedModel, messages: apiMessages, temperature, max_tokens: maxTokens },
+            controller.signal,
+          )
+        : streamChat(
+            { model: selectedModel, messages: apiMessages, stream: true, temperature, max_tokens: maxTokens },
+            controller.signal,
+          );
+
+      for await (const sseEvent of streamGenerator) {
         const eventName = sseEvent.event;
 
         if (eventName === 'agent_turn_start') {
@@ -203,6 +219,15 @@ export function InputArea() {
         } else {
           try {
             const data = JSON.parse(sseEvent.data);
+            if (data.ensemble_phase) {
+              if (data.ensemble_phase === 'model_done') {
+                setStreamState({ phase: `Model ${data.ensemble_model} finished (${data.ensemble_progress})` });
+              } else if (data.ensemble_phase === 'synthesizing') {
+                setStreamState({ phase: `Synthesizing with ${data.ensemble_synthesizer}...` });
+              } else if (data.ensemble_phase === 'collecting') {
+                setStreamState({ phase: `Querying ${data.ensemble_models?.length} models...` });
+              }
+            }
             const delta = data.choices?.[0]?.delta;
             if (data.usage) usage = data.usage;
             if (data.complexity) complexity = data.complexity;
@@ -231,8 +256,13 @@ export function InputArea() {
         if (!accumulatedContent) accumulatedContent = '(Generation stopped)';
       } else {
         const errMsg = err?.message || String(err);
-        accumulatedContent =
-          accumulatedContent || `Error: ${errMsg}`;
+        // Distinguish network errors from empty model responses
+        const isNetworkError = errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError') || errMsg.includes('net::');
+        if (isNetworkError) {
+          accumulatedContent = accumulatedContent || 'Error: Could not connect to the server. Please check that the OpenJarvis backend is running.';
+        } else {
+          accumulatedContent = accumulatedContent || `Error: ${errMsg}`;
+        }
         useAppStore.getState().addLogEntry({
           timestamp: Date.now(), level: 'error', category: 'chat',
           message: `Stream error: ${errMsg}`,
@@ -240,7 +270,16 @@ export function InputArea() {
       }
     } finally {
       if (!accumulatedContent) {
-        accumulatedContent = 'No response was generated. Please try again.';
+        // Stream completed but model returned no content — likely thinking
+        // mode consumed the entire token budget, or the model is too small.
+        accumulatedContent = 'The model returned an empty response. This can happen when:\n'
+          + '• The model uses "thinking mode" internally (Qwen3, DeepSeek-R1, etc.)\n'
+          + '• The model ran out of token budget before producing visible output\n\n'
+          + 'Try restarting the server or switching to a different model.';
+        useAppStore.getState().addLogEntry({
+          timestamp: Date.now(), level: 'warn', category: 'chat',
+          message: `Empty response from ${selectedModel} — possible thinking-mode issue`,
+        });
       }
       const totalMs = Date.now() - startTime;
       const _CLOUD_PREFIXES = ['gpt-', 'o1-', 'o3-', 'o4-', 'claude-', 'gemini-', 'openrouter/', 'MiniMax-', 'chatgpt-'];
@@ -315,6 +354,36 @@ export function InputArea() {
 
   return (
     <div className="px-4 pb-4 pt-2" style={{ maxWidth: 'var(--chat-max-width)', margin: '0 auto', width: '100%' }}>
+      {ensembleMode && (
+        <div className="mb-2 p-3 rounded-xl text-sm" style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-semibold" style={{ color: 'var(--color-text)' }}>Ensemble Mode</span>
+            <button onClick={() => setEnsembleMode(false)} className="text-xs cursor-pointer" style={{ color: 'var(--color-accent)' }}>Disable</button>
+          </div>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {modelsList.map(m => (
+              <button 
+                key={m.id}
+                onClick={() => toggleEnsembleModel(m.id)}
+                className={`px-2 py-1 rounded text-xs transition-colors cursor-pointer border ${ensembleModels.includes(m.id) ? 'bg-[var(--color-accent)] text-white border-[var(--color-accent)]' : 'bg-transparent text-[var(--color-text-secondary)] border-[var(--color-border)]'}`}
+              >
+                {m.id}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <span style={{ color: 'var(--color-text-secondary)', fontSize: '12px' }}>Synthesizer:</span>
+            <select 
+              value={ensembleSynthesizer || selectedModel}
+              onChange={e => setEnsembleSynthesizer(e.target.value)}
+              className="bg-transparent border border-[var(--color-border)] rounded px-2 py-1 text-xs cursor-pointer focus:outline-none"
+              style={{ color: 'var(--color-text)' }}
+            >
+              {modelsList.map(m => <option key={m.id} value={m.id} style={{ background: 'var(--color-bg)' }}>{m.id}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
       <div
         className="flex items-center gap-2 rounded-2xl px-4 py-3 transition-shadow"
         style={{
@@ -345,6 +414,13 @@ export function InputArea() {
           </button>
         ) : (
           <div className="flex items-center gap-1">
+            <button
+              onClick={() => setEnsembleMode(!ensembleMode)}
+              className={`p-2 rounded-xl transition-colors shrink-0 cursor-pointer ${ensembleMode ? 'bg-[var(--color-accent-subtle)] text-[var(--color-accent)]' : 'text-[var(--color-text-tertiary)] hover:bg-[var(--color-bg-tertiary)]'}`}
+              title="Toggle Ensemble Mode"
+            >
+              <Users size={16} />
+            </button>
             <MicButton
               state={speechState}
               onClick={handleMicClick}
